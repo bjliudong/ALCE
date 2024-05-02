@@ -40,6 +40,17 @@ ALCE 包含三个数据集: ASQA, QAMPARI, 和 ELI5.
 请安装最新版本的Pytorch (`torch`), HuggingFace Transformers (`transformers`), HuggingFace Accelerate (`accelerate`), and the OpenAI API package (`openai`). 这个代码库曾在以下环境进行测试
 `torch==2.1.0.dev20230514+cu118`, `transformers==4.28.1`, `accelerate==0.17.1`, and `openai==0.27.4` with Python 3.9.7.
 
+```shell
+conda create -n ALCE python=3.9.7
+
+conda activate ALCE
+
+# 安装最新版本 Pytorch（2.3.0）
+conda install pytorch torchvision torchaudio cpuonly -c pytorch
+
+conda install transformers accelerate openai
+```
+
 ## 数据
 
 你可以通过以下命令下载数据集 （以及检索结果）
