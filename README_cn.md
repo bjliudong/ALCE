@@ -49,6 +49,8 @@ conda activate ALCE
 conda install pytorch torchvision torchaudio cpuonly -c pytorch
 
 conda install transformers accelerate openai
+pip install pyserini
+conda install sentence-transformers
 ```
 
 ## 数据
