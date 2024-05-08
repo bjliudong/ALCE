@@ -48,9 +48,11 @@ conda activate ALCE
 # 安装最新版本 Pytorch（2.3.0）
 conda install pytorch torchvision torchaudio cpuonly -c pytorch
 
-conda install transformers accelerate openai
+conda install transformers openai
+pip install accelerate
 pip install pyserini
-conda install sentence-transformers
+pip install sentence-transformers
+conda install nltk
 ```
 
 ## 数据
@@ -87,7 +89,8 @@ export BM25_SPHERE_PATH=$PWD/faiss_index
 
 ```bash
 wget https://dl.fbaipublicfiles.com/dpr/wikipedia_split/psgs_w100.tsv.gz
-gzip -xzvf psgs_w100.tsv.gz
+# gzip -xzvf psgs_w100.tsv.gz
+gzip -d -- psgs_w100.tsv.gz
 export DPR_WIKI_TSV=$PWD/psgs_w100.tsv
 ```
 
