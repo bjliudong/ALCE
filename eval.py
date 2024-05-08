@@ -190,9 +190,14 @@ def compute_len(data):
 
 
 def compute_qa(data):
-    """Compute QA-based accuracy.
+    """
+    Compute QA-based accuracy.
+    用于计算基于问答对（QA pairs）的准确度指标，它使用了一个预训练的问答模型来评估生成的文本回答是否准确
+
     Args:
         data: requires filed `qa_pairs/short_answers` and `output`
+            qa_pairs：包含问题和简短答案对的列表。
+            output：模型生成的文本输出。
     Returns:
         QA metrics (QA-EM, QA-F1, QA-Hit)
     """
@@ -206,34 +211,46 @@ def compute_qa(data):
         }
 
     # Load model
+    # 加载模型：函数首先检查是否需要加载用于问答的RoBERTa-large SQuAD模型。如果需要，它将加载该模型。
     logger.info("Loading the RoBERTa-large SQuAD model for QA-based accuracy...")
     qa_pipeline = pipeline("question-answering", model=QA_MODEL, device=0)
     logger.info("Done")
 
     # Get prediction
     logger.info("Computing the QA-based accuracy...")
+    # 初始化变量：函数初始化了几个列表来存储精确度(EM)、F1分数和命中次数（Hit）的局部计数。
     em, f1, bins = [], [], []
     for item in tqdm(data):
+        # 从项目中获取问题列表和上下文文本。如果输出文本长度大于0，则使用输出文本作为上下文，否则使用一个空格作为上下文。
         question = [qa_pair['question'] for qa_pair in item['qa_pairs']]
         context = item['output'] if len(item['output']) > 0 else " "
+        # 获取预测：使用加载的问答模型的管道（pipeline）获取问题的答案预测。管道函数允许处理不可能的答案（handle_impossible_answer=True）。
         results = qa_pipeline(question=question, context=context, handle_impossible_answer=True)
         loc_counter, loc_em, loc_f1 = 0, 0, 0
 
         for idx, res in enumerate(results):
+            # 对于每个问题，遍历其对应的答案列表（short_answers）。
             answers = item["qa_pairs"][idx]["short_answers"]
             prediction = res["answer"]
 
+            # 计算预测答案与每个答案之间的精确度（Exact Match）和F1分数。
             loc_em += max([compute_exact(a, prediction) for a in answers])
             loc_f1 += max([compute_f1(a, prediction) for a in answers])
+            # 累加每个问题的最大精确度和F1分数，并增加计数器。
             loc_counter += 1
 
         em.append(loc_em / loc_counter)
         f1.append(loc_f1 / loc_counter)
+        # 计算平均值：计算所有问题的最大精确度和F1分数的平均值，并确定有多少个问题的答案完全匹配（即精确度等于计数器的值）。
         bins.append(loc_em == loc_counter)
 
+    # 返回结果：函数返回一个字典，包含以下键：
     return {
+        # 'QA-EM'：所有问题的最大精确度平均值的百分比形式。
         'QA-EM': 100 * np.mean(em),
+        # 'QA-F1'：所有问题的最大F1分数平均值的百分比形式。
         'QA-F1': 100 * np.mean(f1),
+        # 'QA-Hit'：所有问题答案完全匹配的比例的百分比形式。
         'QA-Hit': 100 * np.mean(bins)
     }
 
@@ -305,22 +322,27 @@ def compute_autoais(data,
                     at_most_citations=None,):
     """
     Compute AutoAIS score.
+    用于计算 AutoAIS 分数的函数，它涉及到自然语言推断（NLI）任务，用于评估模型生成的文本是否与给定的参考文献集相符合。
 
     Args:
         data: requires field `output` and `docs`
               - docs should be a list of items with fields `title` and `text` (or `phrase` and `sent` for QA-extracted docs)
+            data 是需要评估的数据，其中应包含 output 和 docs 字段。
         citation: check citations and use the corresponding references.
-        decontext: decontextualize the output
+        decontext: decontextualize the output。是否去除输出中的上下文信息。
     """
 
+    # 1. 初始化模型：如果全局变量 autoais_model 和 autoais_tokenizer 还没有被初始化，函数会加载 AutoAIS 模型和分词器。
     global autoais_model, autoais_tokenizer
     if autoais_model is None:
         logger.info("Loading AutoAIS model...")
         autoais_model = AutoModelForSeq2SeqLM.from_pretrained(AUTOAIS_MODEL, torch_dtype=torch.bfloat16, max_memory=get_max_memory(), device_map="auto")
         autoais_tokenizer = AutoTokenizer.from_pretrained(AUTOAIS_MODEL, use_fast=False)
 
+    # 2. 开始计算：函数打印日志信息，表明开始运行 AutoAIS。
     logger.info(f"Running AutoAIS...")
 
+    # 3. 格式化文档：定义了一个内部函数 _format_document，用于将文档格式化为 AutoAIS 模型所需的格式。
     def _format_document(doc):
         """Format document for AutoAIS."""
 
@@ -330,6 +352,7 @@ def compute_autoais(data,
         else:
             return "Title: %s\n%s" % (doc['title'], doc['text'])
 
+    # 4. 初始化变量：初始化了一些用于存储中间结果和统计信息的变量，如 ais_scores 和 ais_scores_prec。
     ais_scores = []
     ais_scores_prec = []
 
@@ -340,6 +363,7 @@ def compute_autoais(data,
     autoais_log = []
     for item in tqdm(data):
         # Get sentences by using NLTK
+        # 使用 NLTK 库对输出文本进行分句处理。
         if qampari:
             sents = [item['question'] + " " + x.strip() for x in item['output'].rstrip().rstrip(".").rstrip(",").split(",")]
         else:
@@ -347,32 +371,38 @@ def compute_autoais(data,
         if len(sents) == 0:
             continue
 
+        # 移除句子中的引用标记，并存储结果。
         target_sents = [remove_citations(sent).strip() for sent in sents]
 
         entail = 0
         entail_prec = 0
         total_citations = 0
+        # 对每个句子，计算其与参考文献集的自然语言推断分数。
         for sent_id, sent in enumerate(sents):
             target_sent = target_sents[sent_id] # Citation removed and (if opted for) decontextualized
             joint_entail = -1 # Undecided
 
             # Find references
+            # 寻找句子中的引用标记，并确定引用的参考文献 ID。
             ref = [int(r[1:])-1 for r in re.findall(r"\[\d+", sent)] # In text citation id starts from 1
             logger.info(f"For `{sent}`, find citations {ref}")
+            # 如果没有引用或引用超出范围，则该句子的推断分数为0。
             if len(ref) == 0:
                 # No citations
                 joint_entail = 0
             elif any([ref_id >= len(item['docs']) for ref_id in ref]):
                 # Citations out of range
                 joint_entail = 0
-            else:
+            else:  # 如果有引用且在范围内，根据引用的文献构建一个联合段落。
                 if at_most_citations is not None:
                     ref = ref[:at_most_citations]
                 total_citations += len(ref)
                 joint_passage = '\n'.join([_format_document(item['docs'][psgs_id]) for psgs_id in ref])
 
             # If not directly rejected by citation format error, calculate the recall score
+            # 如果引用格式错误没有直接拒绝，则计算召回分数
             if joint_entail == -1: 
+                # 7. 计算推断分数：使用 _run_nli_autoais 函数计算联合段落和目标句子之间的 NLI 分数。
                 joint_entail = _run_nli_autoais(joint_passage, target_sent)
                 autoais_log.append({
                     "question": item['question'],
@@ -388,9 +418,12 @@ def compute_autoais(data,
                 sent_mcite += 1
 
             # calculate the precision score if applicable
+            # 计算精度分数（如果适用）
+            # 8. 计算精确度和召回率：如果句子有多个引用，函数还会计算精确度分数，即模型是否引用了不必要的文档。
             if joint_entail and len(ref) > 1:
                 sent_mcite_support += 1
                 # Precision check: did the model cite any unnecessary documents?
+                # 计算精确度分数，即模型是否引用了不必要的文档。
                 for psgs_id in ref:
                     # condition A
                     passage = _format_document(item['docs'][psgs_id]) 
@@ -412,6 +445,7 @@ def compute_autoais(data,
             else:
                 entail_prec += joint_entail 
 
+        # 9. 统计信息：函数记录了多引用句子的数量、由联合引用支持的句子数量，以及过度引用（overcite）的情况。
         sent_total += len(sents)
         ais_scores.append(entail / len(sents))
         ais_scores_prec.append(entail_prec / total_citations if total_citations > 0 else 0) # len(sents))
@@ -423,6 +457,9 @@ def compute_autoais(data,
             100 * sent_mcite_overcite / sent_mcite_support
         ))
 
+    # 10. 返回结果：函数返回一个字典，包含两个键：
+    #   - "citation_rec"：所有句子的平均召回率，乘以100得到百分比。
+    #   - "citation_prec"：如果有引用，所有句子的平均精确度，乘以100得到百分比。
     return {
         "citation_rec": 100 * np.mean(ais_scores),
         "citation_prec": 100 * np.mean(ais_scores_prec),
