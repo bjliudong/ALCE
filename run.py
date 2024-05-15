@@ -80,7 +80,7 @@ class LLM:
                 while not is_ok:
                     retry_count += 1
                     try:
-                        response = openai.ChatCompletion.create(
+                        response = openai.chat.completions.create(
                             engine=deploy_name if args.azure else None,
                             model=args.model,
                             messages=prompt,
